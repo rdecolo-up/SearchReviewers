@@ -134,7 +134,8 @@ def fetch_article_details(sheet_id, article_id_query):
             # Normalize keys to simple ones for the app
             return {
                 "Titulo": row_data.get("Título", ""),
-                "Abstract": row_data.get("Resumen", "") or row_data.get("Palabras clave", "") or "Abstract not available in sheet. Context based on Title/Keywords."
+                "Resumen": row_data.get("Resumen", ""),
+                "Palabras clave": row_data.get("Palabras clave", "")
             }
         return None
     except Exception as e:
@@ -173,6 +174,11 @@ def append_to_sheet(worksheet, new_rows_df):
 
 # --- UI & LOGIC ---
 
+try:
+    st.image("UPacifico.png", width=100)
+except:
+    pass # Handle case where image is missing locally or in cloud without proper path
+
 st.title("Buscador de pares evaluadores")
 st.markdown("""
 **Apuntes, Revista de Ciencias Sociales y Journal of Business**  
@@ -209,7 +215,7 @@ if not sheet_id_articulos or not sheet_id_evaluadores or not api_key:
     st.error("Missing Sheet IDs or API Key in secrets.toml")
     st.stop()
 
-mode = st.sidebar.radio("Modo de Búsqueda", ["Por ID de Artículo", "Por Palabras Clave/Resumen"])
+mode = st.sidebar.radio("Modo de Búsqueda", ["Por ID de Artículo", "Por Contenido"])
 
 target_article_context = ""
 context_title = ""
@@ -222,11 +228,22 @@ if mode == "Por ID de Artículo":
             if article_data:
                 st.sidebar.success("¡Artículo Encontrado!")
                 context_title = article_data.get('Titulo', 'Título Desconocido')
-                abstract = article_data.get('Resumen', article_data.get('Abstract', 'Sin resumen'))
-                target_article_context = f"TITLE: {context_title}\nABSTRACT: {abstract}"
+                abstract = article_data.get('Resumen', '')
+                keywords = article_data.get('Palabras clave', '')
+                
+                # Context is built from everything available
+                target_article_context = f"TITLE: {context_title}\nKEYWORDS: {keywords}\nABSTRACT: {abstract}"
+                
                 st.info(f"**Analizando:** {context_title}")
-                with st.expander("Ver Resumen"):
-                    st.write(abstract)
+                
+                # Show details
+                if keywords:
+                    with st.expander("Ver Palabras Clave"):
+                        st.write(keywords)
+                if abstract and abstract != keywords:
+                     with st.expander("Ver Resumen"):
+                        st.write(abstract)
+                        
             else:
                 st.sidebar.error("ID de artículo no encontrado.")
 else:
@@ -244,6 +261,9 @@ else:
 
 prioritize_latam = st.sidebar.checkbox("Priorizar Expertos de LatAm", value=True)
 run_btn = st.sidebar.button("🔍 Buscar Revisores")
+
+st.sidebar.divider()
+st.sidebar.markdown(f"[📂 Abrir Base de Datos Google Sheets](https://docs.google.com/spreadsheets/d/{sheet_id_evaluadores})")
 
 # Main Logic
 # Initialize Session State
