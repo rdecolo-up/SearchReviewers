@@ -173,11 +173,32 @@ def append_to_sheet(worksheet, new_rows_df):
 
 # --- UI & LOGIC ---
 
-st.title("🎓 Academic Reviewer Matcher")
-st.markdown("Automated matching and verified suggestions for peer review.")
+st.title("Buscador de pares evaluadores")
+st.markdown("""
+**Apuntes, Revista de Ciencias Sociales y Journal of Business**  
+Universidad del Pacífico  
+*Desarrollado por: Renato De Col*
+
+⚠️ *Para uso exclusivo de los Editores-en-Jefe de las revistas académicas de la Universidad del Pacífico.*
+""")
+
+# --- AUTHENTICATION ---
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+if not st.session_state.authenticated:
+    st.markdown("### 🔐 Acceso Requerido")
+    password = st.text_input("Ingrese la contraseña:", type="password")
+    if st.button("Ingresar"):
+        if password == "pacificorevistas":
+            st.session_state.authenticated = True
+            st.rerun()
+        else:
+            st.error("Contraseña incorrecta")
+    st.stop()
 
 # Sidebar
-st.sidebar.header("Configuration")
+st.sidebar.header("Configuración")
 
 # Load IDs from secrets (Auto-configured)
 sheet_id_articulos = st.secrets.get("SHEET_ID_ARTICULOS", "")
@@ -188,31 +209,31 @@ if not sheet_id_articulos or not sheet_id_evaluadores or not api_key:
     st.error("Missing Sheet IDs or API Key in secrets.toml")
     st.stop()
 
-mode = st.sidebar.radio("Search Mode", ["By Article ID", "By Keywords/Abstract"])
+mode = st.sidebar.radio("Modo de Búsqueda", ["Por ID de Artículo", "Por Palabras Clave/Resumen"])
 
 target_article_context = ""
 context_title = ""
 
-if mode == "By Article ID":
-    article_id_input = st.sidebar.text_input("Enter Article ID (e.g., 2746)")
+if mode == "Por ID de Artículo":
+    article_id_input = st.sidebar.text_input("Ingrese ID del Artículo (ej. 2746)")
     if article_id_input:
-        with st.spinner(f"Fetching Article {article_id_input}..."):
+        with st.spinner(f"Buscando Artículo {article_id_input}..."):
             article_data = fetch_article_details(sheet_id_articulos, article_id_input)
             if article_data:
-                st.sidebar.success("Article Found!")
-                context_title = article_data.get('Titulo', 'Unknown Title')
-                abstract = article_data.get('Resumen', article_data.get('Abstract', 'No abstract'))
+                st.sidebar.success("¡Artículo Encontrado!")
+                context_title = article_data.get('Titulo', 'Título Desconocido')
+                abstract = article_data.get('Resumen', article_data.get('Abstract', 'Sin resumen'))
                 target_article_context = f"TITLE: {context_title}\nABSTRACT: {abstract}"
-                st.info(f"**Analyzing:** {context_title}")
-                with st.expander("View Abstract"):
+                st.info(f"**Analizando:** {context_title}")
+                with st.expander("Ver Resumen"):
                     st.write(abstract)
             else:
-                st.sidebar.error("Article ID not found.")
+                st.sidebar.error("ID de artículo no encontrado.")
 else:
-    st.sidebar.markdown("### Manual Entry")
-    m_title = st.sidebar.text_input("Article Title")
-    m_keywords = st.sidebar.text_area("Keywords", height=70)
-    m_abstract = st.sidebar.text_area("Abstract", height=150)
+    st.sidebar.markdown("### Búsqueda Manual")
+    m_title = st.sidebar.text_input("Título del Artículo")
+    m_keywords = st.sidebar.text_area("Palabras Clave", height=70)
+    m_abstract = st.sidebar.text_area("Resumen / Abstract", height=150)
     
     components = []
     if m_title: components.append(f"TITLE: {m_title}")
@@ -221,8 +242,8 @@ else:
     
     target_article_context = "\n\n".join(components)
 
-prioritize_latam = st.sidebar.checkbox("Prioritize LatAm Experts", value=True)
-run_btn = st.sidebar.button("🔍 Find Reviewers")
+prioritize_latam = st.sidebar.checkbox("Priorizar Expertos de LatAm", value=True)
+run_btn = st.sidebar.button("🔍 Buscar Revisores")
 
 # Main Logic
 # Initialize Session State
@@ -240,23 +261,26 @@ if run_btn and target_article_context:
             
             # --- PROMPT ---
             system_instruction = """
-            You are an Expert Academic Editor. Your goal is to identify the best peer reviewers for a scientific article.
+            Eres un Editor Académico Experto. Tu objetivo es identificar a los mejores revisores pares para un artículo científico.
             
-            **Process (Chain of Thought):**
-            1.  **Analyze**: Extract the core topics, methodology, and regional focus from the INPUT.
-            2.  **Internal Match**: Search the provided 'REGISTERED REVIEWERS' list for the best matches. Explain why they fit.
-            3.  **External Search Simulation**: Suggest 3 NEW reviewers who are NOT in the list.
-                *   **CRITICAL**: Prioritize experts from Latin American institutions (Universities in Chile, Mexico, Colombia, Argentina, etc.) if the 'Prioritize LatAm' flag is True.
-                *   **Focus**: Look for recent authors in high-impact journals on these specific topics.
-                *   **Verification**: Ensure they are real, active researchers.
-                *   **Email**: Try to INFER the institutional email pattern (e.g., if you know they are at UNAM, suggested format name.surname@nam.mx) or explicitly state "Search Required".
+            **IMPORTANTE**: Responde SIEMPRE en ESPAÑOL.
             
-            **Output Format**:
-            Provide a JSON object with two keys:
-            1.  "internal_matches": List of objects {Name, Institution, Reason}
-            2.  "external_suggestions": List of objects with these EXACT keys: {Nombre, Apellidos, Correo, Afiliación, País, Scholar, OrcId, Temas, Reason}
-                *   For 'Correo', provide a likely professional email.
-                *   For 'Scholar' and 'OrcId', put "Search required".
+            **Proceso (Chain of Thought):**
+            1.  **Analizar**: Extrae los temas centrales, metodología y enfoque regional del INPUT.
+            2.  **Match Interno**: Busca en la lista 'REGISTERED REVIEWERS' los mejores candidatos ya registrados. Explica en ESPAÑOL por qué encajan.
+            3.  **Búsqueda Externa Simulada**: Sugiere 3 NUEVOS revisores que NO estén en la lista.
+                *   **CRÍTICO**: Prioriza expertos de instituciones latinoamericanas (Chile, México, Colombia, Argentina, etc.) si el flag 'Prioritize LatAm' es True.
+                *   **Enfoque**: Busca autores recientes en revistas de alto impacto sobre estos temas.
+                *   **Verificación**: Asegúrate de que sean investigadores reales y activos.
+                *   **Email**: Intenta INFERIR el correo institucional (ej. si es de la UNAM, formato nombre.apellido@nam.mx) o indica "Búsqueda Requerida".
+            
+            **Formato de Salida (JSON)**:
+            Provee un objeto JSON con dos claves:
+            1.  "internal_matches": Lista de objetos {Name, Institution, Reason} (Reason en Español)
+            2.  "external_suggestions": Lista de objetos con estas claves EXACTAS: {Nombre, Apellidos, Correo, Afiliación, País, Scholar, OrcId, Temas, Reason}
+                *   Para 'Correo', provee un email profesional probable.
+                *   Para 'Scholar' y 'OrcId', pon "Search required".
+                *   'Reason' debe explicar en español por qué es un buen candidato.
             """
             
             user_prompt = f"""
@@ -274,27 +298,27 @@ if run_btn and target_article_context:
                 try:
                     json_str = response_text.replace("```json", "").replace("```", "")
                     st.session_state['search_results'] = json.loads(json_str)
-                    st.success("Analysis Complete!")
+                    st.success("¡Análisis Completo!")
                 except Exception as e:
-                    st.error(f"Error parsing AI response: {e}")
+                    st.error(f"Error al procesar respuesta de IA: {e}")
                     st.text(response_text)
 
 # Display Results (Persistent)
 if st.session_state['search_results']:
     results = st.session_state['search_results']
     
-    tab1, tab2 = st.tabs(["🏛️ Internal Matches", "🌎 External Suggestions (New)"])
+    tab1, tab2 = st.tabs(["🏛️ Coincidencias Internas (BD)", "🌎 Sugerencias Externas (Nuevos)"])
     
     with tab1:
         if results.get("internal_matches"):
             st.table(pd.DataFrame(results["internal_matches"]))
         else:
-            st.info("No strong internal matches found.")
+            st.info("No se encontraron coincidencias internas fuertes.")
             
     with tab2:
         externals = results.get("external_suggestions", [])
         if externals:
-            st.info("Select candidates to add to the database:")
+            st.info("Seleccione candidatos para añadir a la base de datos:")
             
             df_externals = pd.DataFrame(externals)
             
@@ -322,7 +346,7 @@ if st.session_state['search_results']:
                         st.markdown(f"[🆔 ORCID]({o_link})")
                     st.divider()
                 
-                submitted = st.form_submit_button("➕ Add Selected to Database")
+                submitted = st.form_submit_button("➕ Añadir Seleccionados a la BD")
                 
                 if submitted:
                     if selected_indices:
@@ -333,7 +357,7 @@ if st.session_state['search_results']:
                         
                         rows_prepared = pd.DataFrame()
                          # Use Article ID if known
-                        current_id_val = article_id_input if mode == "By Article ID" and 'article_id_input' in locals() and article_id_input else ""
+                        current_id_val = article_id_input if mode == "Por ID de Artículo" and 'article_id_input' in locals() and article_id_input else ""
                         
                         rows_prepared["ID Artículo"] = [current_id_val] * len(rows_to_add)
                         rows_prepared["Nombre"] = rows_to_add["Nombre"]
@@ -361,9 +385,9 @@ if st.session_state['search_results']:
                         # Append
                         if ws_to_append and append_to_sheet(ws_to_append, rows_prepared):
                             load_evaluadores.clear()
-                            st.success(f"✅ Added {len(rows_prepared)} reviewers to the database!")
+                            st.success(f"✅ ¡Se añadieron {len(rows_prepared)} revisores a la base de datos!")
                             st.balloons()
                     else:
-                        st.warning("Please select at least one reviewer.")
+                        st.warning("Por favor seleccione al menos un revisor.")
         else:
-            st.warning("AI could not generate external suggestions.")
+            st.warning("La IA no pudo generar sugerencias externas.")
