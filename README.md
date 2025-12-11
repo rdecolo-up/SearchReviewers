@@ -1,0 +1,25 @@
+# Academic Reviewer Matcher App
+
+## 📋 Prerequisites (Lo que necesitas)
+
+Para que esta aplicación funcione en tu máquina, necesitarás tener a mano tres cosas:
+
+1.  **Credenciales de Google Cloud (Service Account)**:
+    -   Un archivo `.json` de una cuenta de servicio habilitada para Google Sheets API y Google Drive API.
+2.  **ID de la Hoja de Cálculo**:
+    -   El identificador de tu Google Sheet (la cadena larga en la URL: `docs.google.com/spreadsheets/d/ID_AQUI/edit`).
+    -   *Nota*: Debes compartir esa hoja con el email de tu Service Account (p.ej., `agent@project.iam.gserviceaccount.com`).
+3.  **API Key de Gemini**:
+    -   Tu clave de API para `google-generative-ai`.
+
+## 🚀 Setup
+
+1.  Instala las dependencias:
+    ```bash
+    pip install -r requirements.txt
+    ```
+2.  Configura los secretos (crearemos un archivo `.streamlit/secrets.toml` juntos).
+3.  Ejecuta la app:
+    ```bash
+    streamlit run app.py
+    ```
