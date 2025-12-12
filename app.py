@@ -135,12 +135,54 @@ def fetch_article_details(sheet_id, article_id_query):
             return {
                 "Titulo": row_data.get("Título", ""),
                 "Resumen": row_data.get("Resumen", ""),
-                "Palabras clave": row_data.get("Palabras clave", "")
+                "Palabras clave": row_data.get("Palabras clave", ""),
+                "Autores": row_data.get("Autores", "")
             }
         return None
     except Exception as e:
         st.error(f"Error fetching article: {repr(e)}")
         st.code(traceback.format_exc())
+        return None
+
+def verify_article_integrity(api_key, author_name, title, abstract, keywords):
+    """
+    Uses Gemini to verify:
+    1. If the author is likely an Undergraduate Student.
+    2. If the article appears to be previously published.
+    """
+    try:
+        system_instruction = """
+        Eres un asistente de integridad académica. Tu tarea es analizar los metadatos de un artículo y su autor para detectar posibles problemas antes de la revisión por pares.
+        
+        **Tareas de Verificación:**
+        1.  **Estatus del Autor**: Determina si es PROBABLEMENTE un **Estudiante de Pregrado (Undergraduate Student)**. (Tesis de licenciatura, falta de credenciales avanzadas).
+        2.  **Publicación Previa**: Analiza si el Título/Resumen coinciden fuertemente con un trabajo YA PUBLICADO en una revista académica o repositorio (excluyendo preprints si es obvio).
+        
+        **Salida JSON**:
+        {
+            "is_undergraduate": boolean,
+            "is_previously_published": boolean,
+            "confidence": "High" | "Medium" | "Low",
+            "reason_author": "Explicación breve sobre el estatus académico",
+            "reason_publication": "Explicación breve sobre hallazgos de publicación previa"
+        }
+        """
+        
+        user_prompt = f"""
+        Analizar Autor: "{author_name}"
+        Título Artículo: "{title}"
+        Resumen: "{abstract}"
+        Palabras Clave: "{keywords}"
+        """
+        
+        response_text = call_gemini_api(api_key, system_instruction, user_prompt)
+        
+        if response_text:
+            cleaned_text = response_text.replace("```json", "").replace("```", "")
+            return json.loads(cleaned_text)
+        return None
+    except Exception as e:
+        print(f"Integrity check failed: {e}")
         return None
 
 def get_active_worksheet(sheet_id):
@@ -230,11 +272,36 @@ if mode == "Por ID de Artículo":
                 context_title = article_data.get('Titulo', 'Título Desconocido')
                 abstract = article_data.get('Resumen', '')
                 keywords = article_data.get('Palabras clave', '')
+                author_name = article_data.get('Autores', 'Autor Desconocido')
                 
                 # Context is built from everything available
                 target_article_context = f"TITLE: {context_title}\nKEYWORDS: {keywords}\nABSTRACT: {abstract}"
                 
-                st.info(f"**Analizando:** {context_title}")
+                # --- INTEGRITY CHECK ---
+                if author_name:
+                    st.info(f"**Analizando:** {context_title} | Autor: {author_name}")
+                    
+                    # Verify Author & Integrity
+                    with st.spinner(f"Verificando integridad y estatus académico..."):
+                        integrity = verify_article_integrity(api_key, author_name, context_title, abstract, keywords)
+                        
+                    if integrity:
+                        # Check 1: Undergraduate
+                        if integrity.get("is_undergraduate"):
+                            st.warning(f"⚠️ **ALERTA AUTOR:** Posible estudiante de pregrado.")
+                            st.write(f"**Detalle:** {integrity.get('reason_author')}")
+                        else:
+                            st.success(f"✅ Autor verificado: {integrity.get('reason_author', 'Perfil académico validado')}")
+                        
+                        # Check 2: Prior Publication
+                        if integrity.get("is_previously_published"):
+                            st.error(f"🚨 **ALERTA PUBLICACIÓN:** Este artículo podría haber sido publicado previamente.")
+                            st.write(f"**Detalle:** {integrity.get('reason_publication')}")
+                        else:
+                            st.success(f"✅ Originalidad: No se detectaron publicaciones previas obvias.")
+                            
+                else:
+                    st.info(f"**Analizando:** {context_title}")
                 
                 # Show details
                 if keywords:
@@ -296,7 +363,7 @@ if run_btn and target_article_context:
             
             **Formato de Salida (JSON)**:
             Provee un objeto JSON con dos claves:
-            1.  "internal_matches": Lista de objetos {Name, Institution, Reason} (Reason en Español)
+            1.  "internal_matches": Lista de objetos {Nombre, Apellidos, Institucion, Temas, Reason} (Reason en Español)
             2.  "external_suggestions": Lista de objetos con estas claves EXACTAS: {Nombre, Apellidos, Correo, Afiliación, País, Scholar, OrcId, Temas, Reason}
                 *   Para 'Correo', provee un email profesional probable.
                 *   Para 'Scholar' y 'OrcId', pon "Search required".
@@ -331,7 +398,15 @@ if st.session_state['search_results']:
     
     with tab1:
         if results.get("internal_matches"):
-            st.table(pd.DataFrame(results["internal_matches"]))
+            df_internal = pd.DataFrame(results["internal_matches"])
+            # Reorder columns for better readability if keys match
+            desired_order = ["Nombre", "Apellidos", "Institucion", "Temas", "Reason"]
+            # Filter to only columns that actually exist in the data
+            cols = [c for c in desired_order if c in df_internal.columns]
+            # Add any extra columns that might be there
+            remaining = [c for c in df_internal.columns if c not in cols]
+            
+            st.table(df_internal[cols + remaining])
         else:
             st.info("No se encontraron coincidencias internas fuertes.")
             
