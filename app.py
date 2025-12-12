@@ -157,7 +157,7 @@ def verify_article_integrity(api_key, author_name, title, abstract, keywords):
         **Tareas de Verificación:**
         **Tareas de Verificación:**
         1.  **Perfil del Autor (Checklist Detallado):**
-            *   **Scholar/ORCID:** Busca enlaces directos.
+            *   **Scholar/ORCID:** NO busques enlaces. Solo evalúa si debería tenerlos.
             *   **Publicaciones Recientes:** Enumera 2 publicaciones recientes (Título y Año).
             *   **Afiliación y Cargo:** Identifica cargo y universidad.
         2.  **Publicación Previa (Solo Revistas):** Analiza si el trabajo ya ha sido publicado en una **REVISTA ACADÉMICA (Journal)**.
@@ -167,8 +167,6 @@ def verify_article_integrity(api_key, author_name, title, abstract, keywords):
         **Salida JSON**:
         {
             "author_checklist": {
-                "scholar_link": "URL o 'No encontrado'",
-                "orcid_link": "URL o 'No encontrado'",
                 "recent_publications_list": [
                     {"title": "Pub 1", "year": "2023"},
                     {"title": "Pub 2", "year": "2022"}
@@ -305,26 +303,16 @@ if mode == "Por ID de Artículo":
                         
                         cols = st.columns(3)
                         
-                        # Col 1: Links
+                        # Col 1: Links (Precision Search)
                         with cols[0]:
-                            scholar = checklist.get("scholar_link", "No encontrado")
-                            orcid = checklist.get("orcid_link", "No encontrado")
+                            # Precision Scholar Link (Search Authors)
+                            s_search = f"https://scholar.google.com/citations?view_op=search_authors&hl=es&mauthors={urllib.parse.quote(author_name)}"
+                            # Precision ORCID Link
+                            o_search = f"https://orcid.org/orcid-search/search?searchQuery={urllib.parse.quote(author_name)}"
                             
-                            # Generate manual search links (Broad search by name)
-                            s_search, o_search, _ = get_verification_links(author_name, "")
-                            
-                            st.markdown("**Enlaces:**")
-                            # Scholar
-                            if "http" in scholar:
-                                st.markdown(f"✅ [Perfil Detectado]({scholar})")
-                            else:
-                                st.markdown(f"❌ [🔎 Buscar en Scholar]({s_search})")
-                            
-                            # ORCID
-                            if "http" in orcid:
-                                st.markdown(f"✅ [Perfil Detectado]({orcid})")
-                            else:
-                                st.markdown(f"❌ [🔎 Buscar en ORCID]({o_search})")
+                            st.markdown("**Búsqueda Inteligente:**")
+                            st.markdown(f"🔎 [Buscar en Scholar]({s_search})")
+                            st.markdown(f"🆔 [Buscar en ORCID]({o_search})")
 
                         # Col 2: Recent Pubs
                         with cols[1]:
@@ -335,12 +323,15 @@ if mode == "Por ID de Artículo":
                                     if isinstance(p, dict):
                                         title = p.get("title", "Sin título")
                                         year = p.get("year", "")
-                                        # Smart Link: Search Title in Scholar
-                                        search_url = f"https://scholar.google.com/scholar?q={urllib.parse.quote(title)}"
+                                        # Precision Pub Link: intitle:"Title" + author:"Name"
+                                        query = f'intitle:"{title}" author:"{author_name}"'
+                                        search_url = f"https://scholar.google.com/scholar?q={urllib.parse.quote(query)}"
                                         st.markdown(f"📄 [{title} ({year})]({search_url})")
                                     else:
-                                        # Legacy fallback
-                                        st.caption(f"📄 {p}")
+                                        # Fallback if string
+                                        query = f'intitle:"{str(p)}" author:"{author_name}"'
+                                        search_url = f"https://scholar.google.com/scholar?q={urllib.parse.quote(query)}"
+                                        st.markdown(f"📄 [{p}]({search_url})")
                             else:
                                 st.warning("⚠️ No se listaron publicaciones recientes.")
 
@@ -350,8 +341,8 @@ if mode == "Por ID de Artículo":
                             st.markdown("**Afiliación (Inferida):**")
                             if role and "No identificado" not in role:
                                 st.success(f"🏛️ {role}")
-                                # Smart Link: Search Role+Institution in Google
-                                google_search = f"https://www.google.com/search?q={urllib.parse.quote(role)}"
+                                # Precision Affiliation Link (Quoted Name + Institution)
+                                google_search = f"https://www.google.com/search?q=\"{urllib.parse.quote(author_name)}\"+{urllib.parse.quote(role)}"
                                 st.markdown(f"[🔗 Verificar Afiliación]({google_search})")
                             else:
                                 st.error("❌ Cargo/Institución no claros")
@@ -363,9 +354,10 @@ if mode == "Por ID de Artículo":
                             st.error(f"🚨 **ALERTA PUBLICACIÓN:** Este artículo podría haber sido publicado previamente.")
                             st.write(f"**Detalle:** {integrity.get('reason_publication')}")
                             
-                            # Smart Link: Search Context Title in Scholar
-                            dup_search = f"https://scholar.google.com/scholar?q={urllib.parse.quote(context_title)}"
-                            st.markdown(f"🔴 [🔗 **VERIFICAR DUPLICADO EN SCHOLAR**]({dup_search})")
+                            # Precision Duplicate Link (intitle: context_title)
+                            dup_query = f'intitle:"{context_title}"'
+                            dup_search = f"https://scholar.google.com/scholar?q={urllib.parse.quote(dup_query)}"
+                            st.markdown(f"🔴 [🔗 **VERIFICAR DUPLICADO**]({dup_search})")
                         else:
                             st.markdown("✅ **Originalidad:** No se detectaron publicaciones previas obvias.")
                             
