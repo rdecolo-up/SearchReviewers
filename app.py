@@ -305,16 +305,21 @@ if mode == "Por ID de Artículo":
                             scholar = checklist.get("scholar_link", "No encontrado")
                             orcid = checklist.get("orcid_link", "No encontrado")
                             
+                            # Generate manual search links (Broad search by name)
+                            s_search, o_search, _ = get_verification_links(author_name, "")
+                            
                             st.markdown("**Enlaces:**")
+                            # Scholar
                             if "http" in scholar:
-                                st.markdown(f"✅ [Google Scholar]({scholar})")
+                                st.markdown(f"✅ [Perfil Detectado]({scholar})")
                             else:
-                                st.markdown("❌ Scholar: No encontrado")
-                                
+                                st.markdown(f"❌ [🔎 Buscar en Scholar]({s_search})")
+                            
+                            # ORCID
                             if "http" in orcid:
-                                st.markdown(f"✅ [ORCID]({orcid})")
+                                st.markdown(f"✅ [Perfil Detectado]({orcid})")
                             else:
-                                st.markdown("❌ ORCID: No encontrado")
+                                st.markdown(f"❌ [🔎 Buscar en ORCID]({o_search})")
 
                         # Col 2: Recent Pubs
                         with cols[1]:
@@ -329,7 +334,7 @@ if mode == "Por ID de Artículo":
                         # Col 3: Affiliation
                         with cols[2]:
                             role = checklist.get("role_and_institution", "No identificado")
-                            st.markdown("**Afiliación:**")
+                            st.markdown("**Afiliación (Inferida):**")
                             if role and "No identificado" not in role:
                                 st.success(f"🏛️ {role}")
                             else:
