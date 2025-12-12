@@ -157,22 +157,27 @@ def verify_article_integrity(api_key, author_name, title, abstract, keywords):
         **Tareas de Verificación:**
         **Tareas de Verificación:**
         1.  **Perfil del Autor (Checklist Detallado):**
-            *   **Scholar/ORCID:** Busca enlaces directos si son obvios o verificables. Si no, indica "No encontrado".
-            *   **Publicaciones Recientes:** Enumera al menos 2 publicaciones recientes (Título y Año) si existen.
-            *   **Afiliación y Cargo:** Identifica el cargo exacto (ej. Profesor Principal, Investigador Asociado) y la Institución.
-        2.  **Publicación Previa:** Analiza si el Título/Resumen coinciden fuertemente con un trabajo YA PUBLICADO en una revista académica o repositorio (excluyendo preprints si es obvio).
+            *   **Scholar/ORCID:** Busca enlaces directos.
+            *   **Publicaciones Recientes:** Enumera 2 publicaciones recientes (Título, Año y **ENLACE**).
+            *   **Afiliación y Cargo:** Identifica cargo y universidad, y busca un **ENLACE** al perfil institucional o prueba de afiliación.
+        2.  **Publicación Previa:** Analiza si el Título/Resumen coinciden con un trabajo YA PUBLICADO. Si es así, proporciona el **ENLACE** a la fuente original.
         
         **Salida JSON**:
         {
             "author_checklist": {
                 "scholar_link": "URL o 'No encontrado'",
                 "orcid_link": "URL o 'No encontrado'",
-                "recent_publications_list": ["Pub 1 (Año)", "Pub 2 (Año)"],
-                "role_and_institution": "Cargo e Institución (ej. 'Profesor de Economía, Univ. X')"
+                "recent_publications_list": [
+                    {"title": "Pub 1", "year": "2023", "url": "URL o null"},
+                    {"title": "Pub 2", "year": "2022", "url": "URL o null"}
+                ],
+                "role_and_institution": "Cargo e Institución",
+                "affiliation_url": "URL de perfil institucional o null"
             },
-            "author_comment": "Evaluación breve del perfil en español (ej. 'Parece ser un investigador activo con buena trazabilidad.')",
+            "author_comment": "Evaluación breve del perfil.",
             "is_previously_published": boolean,
-            "reason_publication": "Explicación breve sobre hallazgos de publicación previa"
+            "publication_url": "URL de la publicación previa detectada (si aplica)",
+            "reason_publication": "Explicación breve..."
         }
         """
         
@@ -327,16 +332,30 @@ if mode == "Por ID de Artículo":
                             st.markdown("**Publicaciones Recientes:**")
                             if pubs and len(pubs) > 0:
                                 for p in pubs[:2]: # Show top 2
-                                    st.caption(f"📄 {p}")
+                                    # Handle new dict format or legacy string
+                                    if isinstance(p, dict):
+                                        title = p.get("title", "Sin título")
+                                        year = p.get("year", "")
+                                        url = p.get("url")
+                                        if url:
+                                            st.markdown(f"📄 [{title} ({year})]({url})")
+                                        else:
+                                            st.caption(f"📄 {title} ({year})")
+                                    else:
+                                        st.caption(f"📄 {p}")
                             else:
                                 st.warning("⚠️ No se listaron publicaciones recientes.")
 
                         # Col 3: Affiliation
                         with cols[2]:
                             role = checklist.get("role_and_institution", "No identificado")
+                            aff_url = checklist.get("affiliation_url")
+                            
                             st.markdown("**Afiliación (Inferida):**")
                             if role and "No identificado" not in role:
                                 st.success(f"🏛️ {role}")
+                                if aff_url:
+                                    st.markdown(f"[🔗 Ver Perfil Institucional]({aff_url})")
                             else:
                                 st.error("❌ Cargo/Institución no claros")
 
@@ -346,6 +365,10 @@ if mode == "Por ID de Artículo":
                         if integrity.get("is_previously_published"):
                             st.error(f"🚨 **ALERTA PUBLICACIÓN:** Este artículo podría haber sido publicado previamente.")
                             st.write(f"**Detalle:** {integrity.get('reason_publication')}")
+                            
+                            pub_url = integrity.get("publication_url")
+                            if pub_url:
+                                st.markdown(f"🔴 [🔗 **VER FUENTE DETECTADA**]({pub_url})")
                         else:
                             st.markdown("✅ **Originalidad:** No se detectaron publicaciones previas obvias.")
                             
