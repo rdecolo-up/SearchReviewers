@@ -152,18 +152,24 @@ def verify_article_integrity(api_key, author_name, title, abstract, keywords):
     """
     try:
         system_instruction = """
-        Eres un asistente de integridad académica. Tu tarea es analizar los metadatos de un artículo y su autor para detectar posibles problemas antes de la revisión por pares.
+        Eres un asistente de integridad académica. Tu tarea es analizar los metadatos de un artículo y su autor para detectar posibles problemas y evaluar la solidez del perfil académico.
         
         **Tareas de Verificación:**
-        1.  **Estatus del Autor**: Determina si es PROBABLEMENTE un **Estudiante de Pregrado (Undergraduate Student)**. (Tesis de licenciatura, falta de credenciales avanzadas).
-        2.  **Publicación Previa**: Analiza si el Título/Resumen coinciden fuertemente con un trabajo YA PUBLICADO en una revista académica o repositorio (excluyendo preprints si es obvio).
+        1.  **Perfil del Autor (Checklist):**
+            *   **Scholar/ORCID:** ¿Es muy probable que este autor tenga un perfil académico identificable (Google Scholar u ORCID)?
+            *   **Publicaciones Recientes:** Basado en tu conocimiento o la fecha del tema, ¿es probable que este autor tenga al menos 2 publicaciones en los últimos 5 años?
+            *   **Afiliación:** ¿El autor parece estar afiliado a una universidad como Profesor o Investigador (NO solo estudiante)?
+        2.  **Publicación Previa:** Analiza si el Título/Resumen coinciden fuertemente con un trabajo YA PUBLICADO en una revista académica o repositorio (excluyendo preprints si es obvio).
         
         **Salida JSON**:
         {
-            "is_undergraduate": boolean,
+            "author_checklist": {
+                "has_scholar_orcid": boolean,
+                "recent_publications": boolean,
+                "university_affiliation": boolean
+            },
+            "author_comment": "Evaluación breve del perfil en español (ej. 'Parece ser un investigador activo con buena trazabilidad.')",
             "is_previously_published": boolean,
-            "confidence": "High" | "Medium" | "Low",
-            "reason_author": "Explicación breve sobre el estatus académico",
             "reason_publication": "Explicación breve sobre hallazgos de publicación previa"
         }
         """
@@ -286,19 +292,35 @@ if mode == "Por ID de Artículo":
                         integrity = verify_article_integrity(api_key, author_name, context_title, abstract, keywords)
                         
                     if integrity:
-                        # Check 1: Undergraduate
-                        if integrity.get("is_undergraduate"):
-                            st.warning(f"⚠️ **ALERTA AUTOR:** Posible estudiante de pregrado.")
-                            st.write(f"**Detalle:** {integrity.get('reason_author')}")
-                        else:
-                            st.success(f"✅ Autor verificado: {integrity.get('reason_author', 'Perfil académico validado')}")
+                        # --- Check 1: Author Profile ---
+                        st.markdown("### 👤 Perfil Académico del Autor")
+                        checklist = integrity.get("author_checklist", {})
                         
-                        # Check 2: Prior Publication
+                        cols = st.columns(3)
+                        with cols[0]:
+                            if checklist.get("has_scholar_orcid"):
+                                st.success("✅ Scholar/ORCID")
+                            else:
+                                st.error("❌ Scholar/ORCID")
+                        with cols[1]:
+                            if checklist.get("recent_publications"):
+                                st.success("✅ Publicaciones (>2)")
+                            else:
+                                st.warning("⚠️ Publicaciones")
+                        with cols[2]:
+                            if checklist.get("university_affiliation"):
+                                st.success("✅ Afiliación Univ.")
+                            else:
+                                st.error("❌ Afiliación Univ.")
+
+                        st.info(f"💡 **Evaluación:** {integrity.get('author_comment', 'No disponible')}")
+                        
+                        # --- Check 2: Prior Publication ---
                         if integrity.get("is_previously_published"):
                             st.error(f"🚨 **ALERTA PUBLICACIÓN:** Este artículo podría haber sido publicado previamente.")
                             st.write(f"**Detalle:** {integrity.get('reason_publication')}")
                         else:
-                            st.success(f"✅ Originalidad: No se detectaron publicaciones previas obvias.")
+                            st.markdown("✅ **Originalidad:** No se detectaron publicaciones previas obvias.")
                             
                 else:
                     st.info(f"**Analizando:** {context_title}")
