@@ -155,18 +155,20 @@ def verify_article_integrity(api_key, author_name, title, abstract, keywords):
         Eres un asistente de integridad académica. Tu tarea es analizar los metadatos de un artículo y su autor para detectar posibles problemas y evaluar la solidez del perfil académico.
         
         **Tareas de Verificación:**
-        1.  **Perfil del Autor (Checklist):**
-            *   **Scholar/ORCID:** ¿Es muy probable que este autor tenga un perfil académico identificable (Google Scholar u ORCID)?
-            *   **Publicaciones Recientes:** Basado en tu conocimiento o la fecha del tema, ¿es probable que este autor tenga al menos 2 publicaciones en los últimos 5 años?
-            *   **Afiliación:** ¿El autor parece estar afiliado a una universidad como Profesor o Investigador (NO solo estudiante)?
+        **Tareas de Verificación:**
+        1.  **Perfil del Autor (Checklist Detallado):**
+            *   **Scholar/ORCID:** Busca enlaces directos si son obvios o verificables. Si no, indica "No encontrado".
+            *   **Publicaciones Recientes:** Enumera al menos 2 publicaciones recientes (Título y Año) si existen.
+            *   **Afiliación y Cargo:** Identifica el cargo exacto (ej. Profesor Principal, Investigador Asociado) y la Institución.
         2.  **Publicación Previa:** Analiza si el Título/Resumen coinciden fuertemente con un trabajo YA PUBLICADO en una revista académica o repositorio (excluyendo preprints si es obvio).
         
         **Salida JSON**:
         {
             "author_checklist": {
-                "has_scholar_orcid": boolean,
-                "recent_publications": boolean,
-                "university_affiliation": boolean
+                "scholar_link": "URL o 'No encontrado'",
+                "orcid_link": "URL o 'No encontrado'",
+                "recent_publications_list": ["Pub 1 (Año)", "Pub 2 (Año)"],
+                "role_and_institution": "Cargo e Institución (ej. 'Profesor de Economía, Univ. X')"
             },
             "author_comment": "Evaluación breve del perfil en español (ej. 'Parece ser un investigador activo con buena trazabilidad.')",
             "is_previously_published": boolean,
@@ -297,21 +299,41 @@ if mode == "Por ID de Artículo":
                         checklist = integrity.get("author_checklist", {})
                         
                         cols = st.columns(3)
+                        
+                        # Col 1: Links
                         with cols[0]:
-                            if checklist.get("has_scholar_orcid"):
-                                st.success("✅ Scholar/ORCID")
+                            scholar = checklist.get("scholar_link", "No encontrado")
+                            orcid = checklist.get("orcid_link", "No encontrado")
+                            
+                            st.markdown("**Enlaces:**")
+                            if "http" in scholar:
+                                st.markdown(f"✅ [Google Scholar]({scholar})")
                             else:
-                                st.error("❌ Scholar/ORCID")
+                                st.markdown("❌ Scholar: No encontrado")
+                                
+                            if "http" in orcid:
+                                st.markdown(f"✅ [ORCID]({orcid})")
+                            else:
+                                st.markdown("❌ ORCID: No encontrado")
+
+                        # Col 2: Recent Pubs
                         with cols[1]:
-                            if checklist.get("recent_publications"):
-                                st.success("✅ Publicaciones (>2)")
+                            pubs = checklist.get("recent_publications_list", [])
+                            st.markdown("**Publicaciones Recientes:**")
+                            if pubs and len(pubs) > 0:
+                                for p in pubs[:2]: # Show top 2
+                                    st.caption(f"📄 {p}")
                             else:
-                                st.warning("⚠️ Publicaciones")
+                                st.warning("⚠️ No se listaron publicaciones recientes.")
+
+                        # Col 3: Affiliation
                         with cols[2]:
-                            if checklist.get("university_affiliation"):
-                                st.success("✅ Afiliación Univ.")
+                            role = checklist.get("role_and_institution", "No identificado")
+                            st.markdown("**Afiliación:**")
+                            if role and "No identificado" not in role:
+                                st.success(f"🏛️ {role}")
                             else:
-                                st.error("❌ Afiliación Univ.")
+                                st.error("❌ Cargo/Institución no claros")
 
                         st.info(f"💡 **Evaluación:** {integrity.get('author_comment', 'No disponible')}")
                         
