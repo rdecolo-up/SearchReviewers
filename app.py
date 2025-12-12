@@ -158,9 +158,11 @@ def verify_article_integrity(api_key, author_name, title, abstract, keywords):
         **Tareas de Verificación:**
         1.  **Perfil del Autor (Checklist Detallado):**
             *   **Scholar/ORCID:** Busca enlaces directos.
-            *   **Publicaciones Recientes:** Enumera 2 publicaciones recientes (Título, Año y **ENLACE**).
-            *   **Afiliación y Cargo:** Identifica cargo y universidad, y busca un **ENLACE** al perfil institucional o prueba de afiliación.
-        2.  **Publicación Previa:** Analiza si el Título/Resumen coinciden con un trabajo YA PUBLICADO. Si es así, proporciona el **ENLACE** a la fuente original.
+            *   **Publicaciones Recientes:** Enumera 2 publicaciones recientes (Título y Año).
+            *   **Afiliación y Cargo:** Identifica cargo y universidad.
+        2.  **Publicación Previa (Solo Revistas):** Analiza si el trabajo ya ha sido publicado en una **REVISTA ACADÉMICA (Journal)**.
+            *   **IMPORTANTE:** NO consideres como "publicación previa" a: Tesis, Repositorios Institucionales, Working Papers o Preprints. Esto es normal.
+            *   **ALERTA:** Solo marca TRUE si detectas que ya salió en otra revista. Si es una tesis o repositorio, marca FALSE.
         
         **Salida JSON**:
         {
@@ -168,16 +170,14 @@ def verify_article_integrity(api_key, author_name, title, abstract, keywords):
                 "scholar_link": "URL o 'No encontrado'",
                 "orcid_link": "URL o 'No encontrado'",
                 "recent_publications_list": [
-                    {"title": "Pub 1", "year": "2023", "url": "URL o null"},
-                    {"title": "Pub 2", "year": "2022", "url": "URL o null"}
+                    {"title": "Pub 1", "year": "2023"},
+                    {"title": "Pub 2", "year": "2022"}
                 ],
-                "role_and_institution": "Cargo e Institución",
-                "affiliation_url": "URL de perfil institucional o null"
+                "role_and_institution": "Cargo e Institución"
             },
             "author_comment": "Evaluación breve del perfil.",
             "is_previously_published": boolean,
-            "publication_url": "URL de la publicación previa detectada (si aplica)",
-            "reason_publication": "Explicación breve..."
+            "reason_publication": "Explicación (ej. 'Coincide con artículo en Revista X' o 'Es tesis/repositorio, no cuenta')"
         }
         """
         
@@ -332,16 +332,14 @@ if mode == "Por ID de Artículo":
                             st.markdown("**Publicaciones Recientes:**")
                             if pubs and len(pubs) > 0:
                                 for p in pubs[:2]: # Show top 2
-                                    # Handle new dict format or legacy string
                                     if isinstance(p, dict):
                                         title = p.get("title", "Sin título")
                                         year = p.get("year", "")
-                                        url = p.get("url")
-                                        if url:
-                                            st.markdown(f"📄 [{title} ({year})]({url})")
-                                        else:
-                                            st.caption(f"📄 {title} ({year})")
+                                        # Smart Link: Search Title in Scholar
+                                        search_url = f"https://scholar.google.com/scholar?q={urllib.parse.quote(title)}"
+                                        st.markdown(f"📄 [{title} ({year})]({search_url})")
                                     else:
+                                        # Legacy fallback
                                         st.caption(f"📄 {p}")
                             else:
                                 st.warning("⚠️ No se listaron publicaciones recientes.")
@@ -349,13 +347,12 @@ if mode == "Por ID de Artículo":
                         # Col 3: Affiliation
                         with cols[2]:
                             role = checklist.get("role_and_institution", "No identificado")
-                            aff_url = checklist.get("affiliation_url")
-                            
                             st.markdown("**Afiliación (Inferida):**")
                             if role and "No identificado" not in role:
                                 st.success(f"🏛️ {role}")
-                                if aff_url:
-                                    st.markdown(f"[🔗 Ver Perfil Institucional]({aff_url})")
+                                # Smart Link: Search Role+Institution in Google
+                                google_search = f"https://www.google.com/search?q={urllib.parse.quote(role)}"
+                                st.markdown(f"[🔗 Verificar Afiliación]({google_search})")
                             else:
                                 st.error("❌ Cargo/Institución no claros")
 
@@ -366,9 +363,9 @@ if mode == "Por ID de Artículo":
                             st.error(f"🚨 **ALERTA PUBLICACIÓN:** Este artículo podría haber sido publicado previamente.")
                             st.write(f"**Detalle:** {integrity.get('reason_publication')}")
                             
-                            pub_url = integrity.get("publication_url")
-                            if pub_url:
-                                st.markdown(f"🔴 [🔗 **VER FUENTE DETECTADA**]({pub_url})")
+                            # Smart Link: Search Context Title in Scholar
+                            dup_search = f"https://scholar.google.com/scholar?q={urllib.parse.quote(context_title)}"
+                            st.markdown(f"🔴 [🔗 **VERIFICAR DUPLICADO EN SCHOLAR**]({dup_search})")
                         else:
                             st.markdown("✅ **Originalidad:** No se detectaron publicaciones previas obvias.")
                             
