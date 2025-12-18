@@ -535,6 +535,9 @@ if st.session_state['search_results']:
                         rows_prepared["OrcId"] = orcid_links
                         rows_prepared["Temas"] = rows_to_add["Temas"]
                         
+                        # Sanitize data for JSON (gspread)
+                        rows_prepared = rows_prepared.fillna("")
+                        
                         # Get fresh worksheet object for writing
                         ws_to_append = get_active_worksheet(sheet_id_evaluadores)
 
