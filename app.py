@@ -120,6 +120,7 @@ def load_evaluadores(sheet_id):
         st.error(f"Error loading Evaluadores: {e}")
         return None
 
+@st.cache_data(ttl=600)
 def fetch_article_details(sheet_id, article_id_query):
     try:
         client = get_google_sheet_client()
@@ -166,6 +167,7 @@ def fetch_article_details(sheet_id, article_id_query):
         st.code(traceback.format_exc())
         return None
 
+@st.cache_data(ttl=3600)
 def verify_article_integrity(api_key, author_name, title, abstract, keywords):
     """
     Uses Gemini to verify:
@@ -216,6 +218,54 @@ def verify_article_integrity(api_key, author_name, title, abstract, keywords):
         return None
     except Exception as e:
         print(f"Integrity check failed: {e}")
+        return None
+
+@st.cache_data(ttl=3600)
+def find_reviewers_with_gemini(api_key, target_article_context, prioritize_latam, evaluadores_str):
+    """
+    Cached function to find reviewers using Gemini.
+    Separating this ensures we don't re-run the expensive API call on every interaction.
+    """
+    try:
+        system_instruction = """
+        Eres un Editor Académico Experto. Tu objetivo es identificar a los mejores revisores pares para un artículo científico.
+        
+        **IMPORTANTE**: Responde SIEMPRE en ESPAÑOL.
+        
+        **Proceso (Chain of Thought):**
+        1.  **Analizar**: Extrae los temas centrales, metodología y enfoque regional del INPUT.
+        2.  **Match Interno**: Busca en la lista 'REGISTERED REVIEWERS' los mejores candidatos ya registrados. Explica en ESPAÑOL por qué encajan.
+        3.  **Búsqueda Externa Simulada**: Sugiere 3 NUEVOS revisores que NO estén en la lista.
+            *   **CRÍTICO**: Prioriza expertos de instituciones latinoamericanas (Chile, México, Colombia, Argentina, etc.) si el flag 'Prioritize LatAm' es True.
+            *   **Enfoque**: Busca autores recientes en revistas de alto impacto sobre estos temas.
+            *   **Verificación**: Asegúrate de que sean investigadores reales y activos.
+            *   **Email**: Intenta INFERIR el correo institucional (ej. si es de la UNAM, formato nombre.apellido@nam.mx) o indica "Búsqueda Requerida".
+        
+        **Formato de Salida (JSON)**:
+        Provee un objeto JSON con dos claves:
+        1.  "internal_matches": Lista de objetos {Nombre, Apellidos, Institucion, Temas, Reason} (Reason en Español)
+        2.  "external_suggestions": Lista de objetos con estas claves EXACTAS: {Nombre, Apellidos, Correo, Afiliación, País, Scholar, OrcId, Temas, Reason}
+            *   Para 'Correo', provee un email profesional probable.
+            *   Para 'Scholar' y 'OrcId', pon "Search required".
+            *   'Reason' debe explicar en español por qué es un buen candidato.
+        """
+        
+        user_prompt = f"""
+        INPUT CONTEXT: "{target_article_context}"
+        PRIORITIZE LATAM: {prioritize_latam}
+        
+        REGISTERED REVIEWERS DATABASE (Sample/Context):
+        {evaluadores_str}
+        """
+        
+        response_text = call_gemini_api(api_key, system_instruction, user_prompt)
+        
+        if response_text:
+            cleaned_text = response_text.replace("```json", "").replace("```", "")
+            return json.loads(cleaned_text)
+        return None
+    except Exception as e:
+        st.error(f"Reviewer search failed: {e}")
         return None
 
 def get_active_worksheet(sheet_id):
@@ -429,49 +479,12 @@ if run_btn and target_article_context:
         if df_evaluadores is not None:
             evaluadores_str = df_evaluadores.to_string(index=False)
             
-            # --- PROMPT ---
-            system_instruction = """
-            Eres un Editor Académico Experto. Tu objetivo es identificar a los mejores revisores pares para un artículo científico.
-            
-            **IMPORTANTE**: Responde SIEMPRE en ESPAÑOL.
-            
-            **Proceso (Chain of Thought):**
-            1.  **Analizar**: Extrae los temas centrales, metodología y enfoque regional del INPUT.
-            2.  **Match Interno**: Busca en la lista 'REGISTERED REVIEWERS' los mejores candidatos ya registrados. Explica en ESPAÑOL por qué encajan.
-            3.  **Búsqueda Externa Simulada**: Sugiere 3 NUEVOS revisores que NO estén en la lista.
-                *   **CRÍTICO**: Prioriza expertos de instituciones latinoamericanas (Chile, México, Colombia, Argentina, etc.) si el flag 'Prioritize LatAm' es True.
-                *   **Enfoque**: Busca autores recientes en revistas de alto impacto sobre estos temas.
-                *   **Verificación**: Asegúrate de que sean investigadores reales y activos.
-                *   **Email**: Intenta INFERIR el correo institucional (ej. si es de la UNAM, formato nombre.apellido@nam.mx) o indica "Búsqueda Requerida".
-            
-            **Formato de Salida (JSON)**:
-            Provee un objeto JSON con dos claves:
-            1.  "internal_matches": Lista de objetos {Nombre, Apellidos, Institucion, Temas, Reason} (Reason en Español)
-            2.  "external_suggestions": Lista de objetos con estas claves EXACTAS: {Nombre, Apellidos, Correo, Afiliación, País, Scholar, OrcId, Temas, Reason}
-                *   Para 'Correo', provee un email profesional probable.
-                *   Para 'Scholar' y 'OrcId', pon "Search required".
-                *   'Reason' debe explicar en español por qué es un buen candidato.
-            """
-            
-            user_prompt = f"""
-            INPUT CONTEXT: "{target_article_context}"
-            PRIORITIZE LATAM: {prioritize_latam}
-            
-            REGISTERED REVIEWERS DATABASE (Sample/Context):
-            {evaluadores_str}
-            """
-            
             with st.spinner("🤖 Gemini is analyzing matches and finding experts..."):
-                response_text = call_gemini_api(api_key, system_instruction, user_prompt)
+                json_results = find_reviewers_with_gemini(api_key, target_article_context, prioritize_latam, evaluadores_str)
             
-            if response_text:
-                try:
-                    json_str = response_text.replace("```json", "").replace("```", "")
-                    st.session_state['search_results'] = json.loads(json_str)
-                    st.success("¡Análisis Completo!")
-                except Exception as e:
-                    st.error(f"Error al procesar respuesta de IA: {e}")
-                    st.text(response_text)
+            if json_results:
+                st.session_state['search_results'] = json_results
+                st.success("¡Análisis Completo!")
 
 # Display Results (Persistent)
 if st.session_state['search_results']:
