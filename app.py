@@ -184,8 +184,10 @@ def verify_article_integrity(api_key, author_name, title, abstract, keywords, mo
         1.  **Perfil del Autor (Checklist Detallado):**
             *   **Scholar/ORCID:** NO busques enlaces. Solo evalúa si debería tenerlos.
             *   **Publicaciones Recientes:** Enumera 2 publicaciones recientes (Título y Año).
+            *   **Publicaciones Recientes:** Enumera 2 publicaciones recientes (Título y Año).
             *   **Afiliación y Cargo:** Identifica cargo y universidad.
-        2.  **Publicación Previa (Solo Revistas):** Analiza si el trabajo ya ha sido publicado en una **REVISTA ACADÉMICA (Journal)**.
+        2.  **Metodología del Artículo:** Determina si es Cuantitativa, Cualitativa o Mixta basándote en el resumen.
+        3.  **Publicación Previa (Solo Revistas):** Analiza si el trabajo ya ha sido publicado en una **REVISTA ACADÉMICA (Journal)**.
             *   **IMPORTANTE:** NO consideres como "publicación previa" a: Tesis, Repositorios Institucionales, Working Papers o Preprints. Esto es normal.
             *   **ALERTA:** Solo marca TRUE si detectas que ya salió en otra revista. Si es una tesis o repositorio, marca FALSE.
         
@@ -200,7 +202,8 @@ def verify_article_integrity(api_key, author_name, title, abstract, keywords, mo
             },
             "author_comment": "Evaluación breve del perfil.",
             "is_previously_published": boolean,
-            "reason_publication": "Explicación (ej. 'Coincide con artículo en Revista X' o 'Es tesis/repositorio, no cuenta')"
+            "reason_publication": "Explicación (ej. 'Coincide con artículo en Revista X' o 'Es tesis/repositorio, no cuenta')",
+            "article_methodology": "Cuantitativo/Cualitativo/Mixto (Breve justificación)"
         }
         """
         
@@ -247,12 +250,11 @@ def find_reviewers_with_gemini(api_key, target_article_context, prioritize_latam
         
         **Formato de Salida (JSON)**:
         {
-            "article_methodology": "Cuantitativo/Cualitativo/Mixto (y breve justificación)",
             "internal_matches": [
-                {"Nombre": "...", "Apellidos": "...", "Institucion": "...", "Temas": "...", "Reason": "..."}
+                {"Nombre": "...", "Apellidos": "...", "Institucion": "...", "Temas": "...", "Methodology": "Cuanti/Cuali/Mixto", "Reason": "..."}
             ],
             "external_suggestions": [
-                 {"Nombre": "...", "Apellidos": "...", "Correo": "...", "Afiliación": "...", "País": "...", "Scholar": "Search required", "OrcId": "Search required", "Temas": "...", "Reason": "..."}
+                 {"Nombre": "...", "Apellidos": "...", "Correo": "...", "Afiliación": "...", "País": "...", "Scholar": "Search required", "OrcId": "Search required", "Temas": "...", "Methodology": "Cuanti/Cuali/Mixto", "Reason": "..."}
             ]
         }
         """
@@ -442,6 +444,10 @@ if mode == "Por ID de Artículo":
 
                         st.info(f"💡 **Evaluación:** {integrity.get('author_comment', 'No disponible')}")
                         
+                        # --- Check 3: Methodology ---
+                        meth = integrity.get("article_methodology", "No detectado")
+                        st.info(f"📊 **Metodología Detectada:** {meth}")
+                        
                         # --- Check 2: Prior Publication ---
                         if integrity.get("is_previously_published"):
                             st.error(f"🚨 **ALERTA PUBLICACIÓN:** Este artículo podría haber sido publicado previamente.")
@@ -511,20 +517,18 @@ if run_btn and target_article_context:
 if st.session_state['search_results']:
     results = st.session_state['search_results']
     
-    # Methodology Display
-    methodology = results.get("article_methodology", "No identificado")
-    st.info(f"📊 **Enfoque Metodológico Detectado:** {methodology}")
+    # Removed global methodology display from here (moved to Profile)
     
     tab1, tab2 = st.tabs(["🏛️ Coincidencias Internas (BD)", "🌎 Sugerencias Externas (Nuevos)"])
     
     with tab1:
         if results.get("internal_matches"):
             df_internal = pd.DataFrame(results["internal_matches"])
-            # Reorder columns for better readability if keys match
-            desired_order = ["Nombre", "Apellidos", "Institucion", "Temas", "Reason"]
-            # Filter to only columns that actually exist in the data
+            # Reorder columns: Add Methodology
+            desired_order = ["Nombre", "Apellidos", "Institucion", "Temas", "Methodology", "Reason"]
+            # Filter to only columns that actually exist
             cols = [c for c in desired_order if c in df_internal.columns]
-            # Add any extra columns that might be there
+            # Add remaining
             remaining = [c for c in df_internal.columns if c not in cols]
             
             st.table(df_internal[cols + remaining])
@@ -554,6 +558,7 @@ if st.session_state['search_results']:
                         st.write(row['Afiliación'])
                     with cols[4]:
                         st.write(row['Temas'])
+                        st.caption(f"🛠 {row.get('Methodology', '')}")
                     with cols[5]:
                         st.write(row['País'])
                     with cols[6]:
