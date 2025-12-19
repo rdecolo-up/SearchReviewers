@@ -49,7 +49,7 @@ import time
 
 def call_gemini_api(api_key, system_instruction, user_prompt):
     max_retries = 3
-    base_delay = 2
+    base_delay = 4 # Increased delay
     
     for attempt in range(max_retries):
         try:
@@ -74,7 +74,7 @@ def call_gemini_api(api_key, system_instruction, user_prompt):
             # Handle Rate Limits (429) specifically
             if response.status_code == 429:
                 sleep_time = base_delay * (2 ** attempt)
-                st.warning(f"⚠️ Tráfico alto en la IA. Reintentando en {sleep_time} segundos... (Intento {attempt + 1}/{max_retries})")
+                st.warning(f"⚠️ Tráfico alto (429). Esperando {sleep_time}s... (Intento {attempt + 1}/{max_retries})")
                 time.sleep(sleep_time)
                 continue # Retry
                 
@@ -86,16 +86,15 @@ def call_gemini_api(api_key, system_instruction, user_prompt):
             
         except Exception as e:
             if attempt == max_retries - 1: # Last attempt
-                st.error(f"Error calling Gemini API after {max_retries} attempts: {e}")
+                st.error(f"🔴 GEMINI FAIL (Final): {e}")
                 return None
             else:
-                # If it's a non-429 error but we still want to be robust, we could retry, 
-                # but standard practice is usually just to retry network/rate errors.
-                # Here we continue to next iteration only if it was caught above,
-                # but valid logic flows to the next generic exception print if not 429.
-                # For simplicity, we only explicitly retry 429s in the if-block above.
-                st.error(f"API Error: {e}")
-                return None
+                # Check if it was a 429 that somehow slipped through (shouldn't happen with logic above)
+                # or a network error we want to retry
+                st.warning(f"⚠️ API Error (Retrying): {e}")
+                time.sleep(2) # Short sleep for non-429 errors
+                continue
+    return None
 
 # --- DATA HANDLING ---
 
