@@ -47,13 +47,13 @@ def get_google_sheet_client():
 
 import time
 
-def call_gemini_api(api_key, system_instruction, user_prompt):
+def call_gemini_api(api_key, system_instruction, user_prompt, model_name="gemini-1.5-flash"):
     max_retries = 3
     base_delay = 4 # Increased delay
     
     for attempt in range(max_retries):
         try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
             headers = {"Content-Type": "application/json"}
             
             # Construct payload with system instruction properly
@@ -168,7 +168,7 @@ def fetch_article_details(sheet_id, article_id_query):
         return None
 
 @st.cache_data(ttl=3600)
-def verify_article_integrity(api_key, author_name, title, abstract, keywords):
+def verify_article_integrity(api_key, author_name, title, abstract, keywords, model_name):
     """
     Uses Gemini to verify:
     1. If the author is likely an Undergraduate Student.
@@ -210,7 +210,7 @@ def verify_article_integrity(api_key, author_name, title, abstract, keywords):
         Palabras Clave: "{keywords}"
         """
         
-        response_text = call_gemini_api(api_key, system_instruction, user_prompt)
+        response_text = call_gemini_api(api_key, system_instruction, user_prompt, model_name)
         
         if response_text:
             cleaned_text = response_text.replace("```json", "").replace("```", "")
@@ -221,7 +221,7 @@ def verify_article_integrity(api_key, author_name, title, abstract, keywords):
         return None
 
 @st.cache_data(ttl=3600)
-def find_reviewers_with_gemini(api_key, target_article_context, prioritize_latam, evaluadores_str):
+def find_reviewers_with_gemini(api_key, target_article_context, prioritize_latam, evaluadores_str, model_name):
     """
     Cached function to find reviewers using Gemini.
     Separating this ensures we don't re-run the expensive API call on every interaction.
@@ -258,7 +258,7 @@ def find_reviewers_with_gemini(api_key, target_article_context, prioritize_latam
         {evaluadores_str}
         """
         
-        response_text = call_gemini_api(api_key, system_instruction, user_prompt)
+        response_text = call_gemini_api(api_key, system_instruction, user_prompt, model_name)
         
         if response_text:
             cleaned_text = response_text.replace("```json", "").replace("```", "")
@@ -340,6 +340,16 @@ if not sheet_id_articulos or not sheet_id_evaluadores or not api_key:
     st.error("Missing Sheet IDs or API Key in secrets.toml")
     st.stop()
 
+# Model Selector
+model_options = {
+    "⚡ Gemini 1.5 Flash (Rápido - 1500 usos/día)": "gemini-1.5-flash",
+    "🧠 Gemini 1.5 Pro (Potente - 50 usos/día)": "gemini-1.5-pro-latest",
+    "🚀 Gemini 3.0 Flash (Preview - Nuevo)": "gemini-3-flash-preview",
+    "🧪 Gemini 3.0 Pro (Preview - Experimental)": "gemini-3-pro-preview"
+}
+selected_model_label = st.sidebar.selectbox("Modelo de Inteligencia Artificial", list(model_options.keys()))
+selected_model_name = model_options[selected_model_label]
+
 mode = st.sidebar.radio("Modo de Búsqueda", ["Por ID de Artículo", "Por Contenido"])
 
 target_article_context = ""
@@ -366,7 +376,7 @@ if mode == "Por ID de Artículo":
                     
                     # Verify Author & Integrity
                     with st.spinner(f"Verificando integridad y estatus académico..."):
-                        integrity = verify_article_integrity(api_key, author_name, context_title, abstract, keywords)
+                        integrity = verify_article_integrity(api_key, author_name, context_title, abstract, keywords, selected_model_name)
                         
                     if integrity:
                         # --- Check 1: Author Profile ---
@@ -480,7 +490,7 @@ if run_btn and target_article_context:
             evaluadores_str = df_evaluadores.to_string(index=False)
             
             with st.spinner("🤖 Gemini is analyzing matches and finding experts..."):
-                json_results = find_reviewers_with_gemini(api_key, target_article_context, prioritize_latam, evaluadores_str)
+                json_results = find_reviewers_with_gemini(api_key, target_article_context, prioritize_latam, evaluadores_str, selected_model_name)
             
             if json_results:
                 st.session_state['search_results'] = json_results
