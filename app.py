@@ -159,7 +159,8 @@ def fetch_article_details(sheet_id, article_id_query):
                 "Titulo": row_data.get("Título", ""),
                 "Resumen": row_data.get("Resumen", ""),
                 "Palabras clave": row_data.get("Palabras clave", ""),
-                "Autores": row_data.get("Autores", "")
+                "Autores": row_data.get("Autores", ""),
+                "Link": row_data.get("Enlace archivo", row_data.get("Link", row_data.get("URL", "")))
             }
         return None
     except Exception as e:
@@ -233,21 +234,27 @@ def find_reviewers_with_gemini(api_key, target_article_context, prioritize_latam
         **IMPORTANTE**: Responde SIEMPRE en ESPAÑOL.
         
         **Proceso (Chain of Thought):**
-        1.  **Analizar**: Extrae los temas centrales, metodología y enfoque regional del INPUT.
-        2.  **Match Interno**: Busca en la lista 'REGISTERED REVIEWERS' los mejores candidatos ya registrados. Explica en ESPAÑOL por qué encajan.
-        3.  **Búsqueda Externa Simulada**: Sugiere 3 NUEVOS revisores que NO estén en la lista.
-            *   **CRÍTICO**: Prioriza expertos de instituciones latinoamericanas (Chile, México, Colombia, Argentina, etc.) si el flag 'Prioritize LatAm' es True.
-            *   **Enfoque**: Busca autores recientes en revistas de alto impacto sobre estos temas.
-            *   **Verificación**: Asegúrate de que sean investigadores reales y activos.
-            *   **Email**: Intenta INFERIR el correo institucional (ej. si es de la UNAM, formato nombre.apellido@nam.mx) o indica "Búsqueda Requerida".
+        1.  **Analizar**:
+            *   Extrae los temas centrales.
+            *   **DETERMINA LA METODOLOGÍA**: ¿Es Cuantitativa, Cualitativa o Mixta? (Basado en el Abstract/Keywords).
+            *   Identifica el enfoque regional.
+        2.  **Match Interno**: Busca en 'REGISTERED REVIEWERS' candidatos.
+            *   **Filtro de Metodología**: Prioriza revisores que manejen la metodología detectada.
+            *   Explica en ESPAÑOL por qué encajan (Tema + Metodología).
+        3.  **Búsqueda Externa Simulada**: Sugiere 3 NUEVOS revisores.
+            *   **CRÍTICO**: Prioriza LatAm.
+            *   **Expertise**: Debe encajar con el tema y la metodología.
         
         **Formato de Salida (JSON)**:
-        Provee un objeto JSON con dos claves:
-        1.  "internal_matches": Lista de objetos {Nombre, Apellidos, Institucion, Temas, Reason} (Reason en Español)
-        2.  "external_suggestions": Lista de objetos con estas claves EXACTAS: {Nombre, Apellidos, Correo, Afiliación, País, Scholar, OrcId, Temas, Reason}
-            *   Para 'Correo', provee un email profesional probable.
-            *   Para 'Scholar' y 'OrcId', pon "Search required".
-            *   'Reason' debe explicar en español por qué es un buen candidato.
+        {
+            "article_methodology": "Cuantitativo/Cualitativo/Mixto (y breve justificación)",
+            "internal_matches": [
+                {"Nombre": "...", "Apellidos": "...", "Institucion": "...", "Temas": "...", "Reason": "..."}
+            ],
+            "external_suggestions": [
+                 {"Nombre": "...", "Apellidos": "...", "Correo": "...", "Afiliación": "...", "País": "...", "Scholar": "Search required", "OrcId": "Search required", "Temas": "...", "Reason": "..."}
+            ]
+        }
         """
         
         user_prompt = f"""
@@ -342,8 +349,8 @@ if not sheet_id_articulos or not sheet_id_evaluadores or not api_key:
 
 # Model Selector
 model_options = {
-    "⚡ Gemini 1.5 Flash (Rápido - 1500 usos/día)": "gemini-1.5-flash",
-    "🧠 Gemini 1.5 Pro (Potente - 50 usos/día)": "gemini-1.5-pro-latest",
+    "⚡ Gemini 1.5 Flash (Rápido - 1500 usos/día)": "gemini-flash-latest",
+    "🧠 Gemini 1.5 Pro (Potente - 50 usos/día)": "gemini-pro-latest",
     "🚀 Gemini 3.0 Flash (Preview - Nuevo)": "gemini-3-flash-preview",
     "🧪 Gemini 3.0 Pro (Preview - Experimental)": "gemini-3-pro-preview"
 }
@@ -366,9 +373,13 @@ if mode == "Por ID de Artículo":
                 abstract = article_data.get('Resumen', '')
                 keywords = article_data.get('Palabras clave', '')
                 author_name = article_data.get('Autores', 'Autor Desconocido')
+                link = article_data.get('Link', '')
                 
                 # Context is built from everything available
-                target_article_context = f"TITLE: {context_title}\nKEYWORDS: {keywords}\nABSTRACT: {abstract}"
+                target_article_context = f"TITLE: {context_title}\nKEYWORDS: {keywords}\nABSTRACT: {abstract}\nLINK: {link}"
+                
+                if link:
+                    st.sidebar.markdown(f"[🔗 **Ver Texto Completo**]({link})")
                 
                 # --- INTEGRITY CHECK ---
                 if author_name:
@@ -405,13 +416,13 @@ if mode == "Por ID de Artículo":
                                     if isinstance(p, dict):
                                         title = p.get("title", "Sin título")
                                         year = p.get("year", "")
-                                        # Precision Pub Link: intitle:"Title" + author:"Name"
-                                        query = f'intitle:"{title}" author:"{author_name}"'
+                                        # Precision Pub Link: "Title" + author:"Name" (intitle removed)
+                                        query = f'"{title}" author:"{author_name}"'
                                         search_url = f"https://scholar.google.com/scholar?q={urllib.parse.quote(query)}"
                                         st.markdown(f"📄 [{title} ({year})]({search_url})")
                                     else:
                                         # Fallback if string
-                                        query = f'intitle:"{str(p)}" author:"{author_name}"'
+                                        query = f'"{str(p)}" author:"{author_name}"'
                                         search_url = f"https://scholar.google.com/scholar?q={urllib.parse.quote(query)}"
                                         st.markdown(f"📄 [{p}]({search_url})")
                             else:
@@ -499,6 +510,10 @@ if run_btn and target_article_context:
 # Display Results (Persistent)
 if st.session_state['search_results']:
     results = st.session_state['search_results']
+    
+    # Methodology Display
+    methodology = results.get("article_methodology", "No identificado")
+    st.info(f"📊 **Enfoque Metodológico Detectado:** {methodology}")
     
     tab1, tab2 = st.tabs(["🏛️ Coincidencias Internas (BD)", "🌎 Sugerencias Externas (Nuevos)"])
     
