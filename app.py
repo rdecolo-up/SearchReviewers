@@ -244,8 +244,11 @@ def find_reviewers_with_gemini(api_key, target_article_context, prioritize_latam
         2.  **Match Interno**: Busca en 'REGISTERED REVIEWERS' candidatos.
             *   **Filtro de Metodología**: Prioriza revisores que manejen la metodología detectada.
             *   Explica en ESPAÑOL por qué encajan (Tema + Metodología).
-        3.  **Búsqueda Externa Simulada**: Sugiere 3 NUEVOS revisores.
-            *   **CRÍTICO**: Prioriza LatAm.
+        3.  **Búsqueda Externa Simulada**: Sugiere 3 NUEVOS revisores COMPLETOS.
+            *   **REGLA DE ORO (COMPLETITUD)**: Solo sugiere candidatos con DATOS COMPLETOS (Nombre, Email, Afiliación, País).
+            *   **EMAIL**: Debe ser institucional y COINCIDIR con la afiliación (ej. @unam.mx si es de UNAM).
+            *   **FILTRO**: Si falta el correo o no coincide, DESCARTA al candidato y busca otro.
+            *   **PROHIBIDO**: No devuelvas "Search required" ni campos vacíos.
             *   **Expertise**: Debe encajar con el tema y la metodología.
         
         **Formato de Salida (JSON)**:
@@ -254,7 +257,7 @@ def find_reviewers_with_gemini(api_key, target_article_context, prioritize_latam
                 {"Nombre": "...", "Apellidos": "...", "Institucion": "...", "Temas": "...", "Methodology": "Cuanti/Cuali/Mixto", "Reason": "..."}
             ],
             "external_suggestions": [
-                 {"Nombre": "...", "Apellidos": "...", "Correo": "...", "Afiliación": "...", "País": "...", "Scholar": "Search required", "OrcId": "Search required", "Temas": "...", "Methodology": "Cuanti/Cuali/Mixto", "Reason": "..."}
+                 {"Nombre": "...", "Apellidos": "...", "Correo": "user@institution.edu", "Afiliación": "Institution Name", "País": "...", "Scholar": "", "OrcId": "", "Temas": "...", "Methodology": "Cuanti/Cuali/Mixto", "Reason": "..."}
             ]
         }
         """
