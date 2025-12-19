@@ -418,13 +418,13 @@ if mode == "Por ID de Artículo":
                                     if isinstance(p, dict):
                                         title = p.get("title", "Sin título")
                                         year = p.get("year", "")
-                                        # Precision Pub Link: "Title" + author:"Name" (intitle removed)
-                                        query = f'"{title}" author:"{author_name}"'
+                                        # Simple Pub Link: Title + Author
+                                        query = f"{title} {author_name}"
                                         search_url = f"https://scholar.google.com/scholar?q={urllib.parse.quote(query)}"
                                         st.markdown(f"📄 [{title} ({year})]({search_url})")
                                     else:
                                         # Fallback if string
-                                        query = f'"{str(p)}" author:"{author_name}"'
+                                        query = f"{str(p)} {author_name}"
                                         search_url = f"https://scholar.google.com/scholar?q={urllib.parse.quote(query)}"
                                         st.markdown(f"📄 [{p}]({search_url})")
                             else:
