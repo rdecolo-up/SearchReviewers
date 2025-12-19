@@ -45,34 +45,57 @@ def get_google_sheet_client():
         st.code(traceback.format_exc())
         return None
 
+import time
+
 def call_gemini_api(api_key, system_instruction, user_prompt):
-    try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
-        headers = {"Content-Type": "application/json"}
-        
-        # Construct payload with system instruction properly
-        full_prompt = f"{system_instruction}\n\n{user_prompt}"
-        
-        data = {
-            "contents": [{
-                "parts": [{"text": full_prompt}]
-            }],
-            "generationConfig": {
-                "temperature": 0.2,
-                "response_mime_type": "application/json"
+    max_retries = 3
+    base_delay = 2
+    
+    for attempt in range(max_retries):
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
+            headers = {"Content-Type": "application/json"}
+            
+            # Construct payload with system instruction properly
+            full_prompt = f"{system_instruction}\n\n{user_prompt}"
+            
+            data = {
+                "contents": [{
+                    "parts": [{"text": full_prompt}]
+                }],
+                "generationConfig": {
+                    "temperature": 0.2,
+                    "response_mime_type": "application/json"
+                }
             }
-        }
-        
-        response = requests.post(url, headers=headers, json=data)
-        response.raise_for_status()
-        
-        result = response.json()
-        # Extract text
-        return result['candidates'][0]['content']['parts'][0]['text']
-        
-    except Exception as e:
-        st.error(f"Error calling Gemini API: {e}")
-        return None
+            
+            response = requests.post(url, headers=headers, json=data)
+            
+            # Handle Rate Limits (429) specifically
+            if response.status_code == 429:
+                sleep_time = base_delay * (2 ** attempt)
+                st.warning(f"⚠️ Tráfico alto en la IA. Reintentando en {sleep_time} segundos... (Intento {attempt + 1}/{max_retries})")
+                time.sleep(sleep_time)
+                continue # Retry
+                
+            response.raise_for_status()
+            
+            result = response.json()
+            # Extract text
+            return result['candidates'][0]['content']['parts'][0]['text']
+            
+        except Exception as e:
+            if attempt == max_retries - 1: # Last attempt
+                st.error(f"Error calling Gemini API after {max_retries} attempts: {e}")
+                return None
+            else:
+                # If it's a non-429 error but we still want to be robust, we could retry, 
+                # but standard practice is usually just to retry network/rate errors.
+                # Here we continue to next iteration only if it was caught above,
+                # but valid logic flows to the next generic exception print if not 429.
+                # For simplicity, we only explicitly retry 429s in the if-block above.
+                st.error(f"API Error: {e}")
+                return None
 
 # --- DATA HANDLING ---
 
