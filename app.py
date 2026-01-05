@@ -75,6 +75,8 @@ def call_gemini_api(api_key, system_instruction, user_prompt, model_name="gemini
             if response.status_code == 429:
                 sleep_time = base_delay * (2 ** attempt)
                 st.warning(f"⚠️ Tráfico alto (429). Esperando {sleep_time}s... (Intento {attempt + 1}/{max_retries})")
+                if attempt == 1:
+                    st.toast("💡 Consejo: Si esto persiste, prueba cambiar al modelo 'Gemini 1.5 Flash'.")
                 time.sleep(sleep_time)
                 continue # Retry
                 
@@ -333,7 +335,9 @@ if not st.session_state.authenticated:
     st.markdown("### 🔐 Acceso Requerido")
     password = st.text_input("Ingrese la contraseña:", type="password")
     if st.button("Ingresar"):
-        if password == "pacificorevistas":
+        # Load password from secrets for security
+        app_password = st.secrets.get("APP_PASSWORD", "pacificorevistas") # Fallback only for smooth transition if secret missing
+        if password == app_password:
             st.session_state.authenticated = True
             st.rerun()
         else:
@@ -354,10 +358,10 @@ if not sheet_id_articulos or not sheet_id_evaluadores or not api_key:
 
 # Model Selector
 model_options = {
-    "⚡ Gemini 1.5 Flash (Rápido - 1500 usos/día)": "gemini-flash-latest",
-    "🧠 Gemini 1.5 Pro (Potente - 50 usos/día)": "gemini-pro-latest",
-    "🚀 Gemini 3.0 Flash (Preview - Nuevo)": "gemini-3-flash-preview",
-    "🧪 Gemini 3.0 Pro (Preview - Experimental)": "gemini-3-pro-preview"
+    "⚡ Gemini 1.5 Flash (Estable - Ilimits)": "gemini-flash-latest",
+    "🚀 Gemini 3.0 Flash (Nuevo - Rápido y Potente)": "gemini-3-flash-preview",
+    "🧠 Gemini 1.5 Pro (Cuota limitada: 50/día)": "gemini-pro-latest",
+    "🧪 Gemini 3.0 Pro (Exp - Cuota estricta)": "gemini-3-pro-preview"
 }
 selected_model_label = st.sidebar.selectbox("Modelo de Inteligencia Artificial", list(model_options.keys()))
 selected_model_name = model_options[selected_model_label]
