@@ -358,10 +358,10 @@ if not sheet_id_articulos or not sheet_id_evaluadores or not api_key:
 
 # Model Selector
 model_options = {
-    "⚡ Gemini 1.5 Flash (Estable - Ilimits)": "gemini-flash-latest",
-    "🚀 Gemini 3.0 Flash (Nuevo - Rápido y Potente)": "gemini-3-flash-preview",
-    "🧠 Gemini 1.5 Pro (Cuota limitada: 50/día)": "gemini-pro-latest",
-    "🧪 Gemini 3.0 Pro (Exp - Cuota estricta)": "gemini-3-pro-preview"
+    "Gemini 1.5 Flash": "gemini-flash-latest",
+    "Gemini 3.0 Flash": "gemini-3-flash-preview",
+    "Gemini 1.5 Pro": "gemini-pro-latest",
+    "Gemini 3.0 Pro": "gemini-3-pro-preview"
 }
 selected_model_label = st.sidebar.selectbox("Modelo de Inteligencia Artificial", list(model_options.keys()))
 selected_model_name = model_options[selected_model_label]
