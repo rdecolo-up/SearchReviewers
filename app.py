@@ -47,9 +47,9 @@ def get_google_sheet_client():
 
 import time
 
-def call_gemini_api(api_key, system_instruction, user_prompt, model_name="gemini-1.5-flash"):
+def call_gemini_api(api_key, system_instruction, user_prompt, model_name="gemini-1.5-flash-latest"):
     max_retries = 3
-    base_delay = 4 # Increased delay
+    base_delay = 10  # Base delay for exponential backoff (10s -> 20s -> 40s)
     
     for attempt in range(max_retries):
         try:
@@ -358,10 +358,10 @@ if not sheet_id_articulos or not sheet_id_evaluadores or not api_key:
 
 # Model Selector
 model_options = {
-    "Gemini 1.5 Flash": "gemini-flash-latest",
-    "Gemini 3.0 Flash": "gemini-3-flash-preview",
-    "Gemini 1.5 Pro": "gemini-pro-latest",
-    "Gemini 3.0 Pro": "gemini-3-pro-preview"
+    "Gemini 1.5 Flash (Recomendado)": "gemini-1.5-flash-latest",
+    "Gemini 3 Flash": "gemini-3-flash-preview",
+    "Gemini 1.5 Pro": "gemini-1.5-pro-latest",
+    "Gemini 3.1 Pro": "gemini-3.1-pro-preview"
 }
 selected_model_label = st.sidebar.selectbox("Modelo de Inteligencia Artificial", list(model_options.keys()))
 selected_model_name = model_options[selected_model_label]
@@ -395,8 +395,11 @@ if mode == "Por ID de Artículo":
                     st.info(f"**Analizando:** {context_title} | Autor: {author_name}")
                     
                     # Verify Author & Integrity
-                    with st.spinner(f"Verificando integridad y estatus académico..."):
+                    with st.spinner("Verificando integridad y estatus academico..."):
                         integrity = verify_article_integrity(api_key, author_name, context_title, abstract, keywords, selected_model_name)
+                    # Brief pause so the integrity call does not run back-to-back with the
+                    # reviewer search call and trigger the per-minute quota limit.
+                    time.sleep(5)
                         
                     if integrity:
                         # --- Check 1: Author Profile ---
