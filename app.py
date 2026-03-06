@@ -47,7 +47,7 @@ def get_google_sheet_client():
 
 import time
 
-def call_gemini_api(api_key, system_instruction, user_prompt, model_name="gemini-1.5-flash-latest"):
+def call_gemini_api(api_key, system_instruction, user_prompt, model_name="gemini-2.5-flash"):
     max_retries = 3
     base_delay = 10  # Base delay for exponential backoff (10s -> 20s -> 40s)
     
@@ -83,8 +83,13 @@ def call_gemini_api(api_key, system_instruction, user_prompt, model_name="gemini
             response.raise_for_status()
             
             result = response.json()
-            # Extract text
-            return result['candidates'][0]['content']['parts'][0]['text']
+            # Guard against empty/blocked candidates
+            candidates = result.get("candidates", [])
+            if not candidates or not candidates[0].get("content", {}).get("parts"):
+                finish = candidates[0].get("finishReason", "UNKNOWN") if candidates else "NO_CANDIDATES"
+                st.warning(f"Respuesta vacia del modelo (finishReason: {finish}). Intente con otro modelo.")
+                return None
+            return candidates[0]["content"]["parts"][0]["text"]
             
         except Exception as e:
             if attempt == max_retries - 1: # Last attempt
@@ -358,10 +363,10 @@ if not sheet_id_articulos or not sheet_id_evaluadores or not api_key:
 
 # Model Selector
 model_options = {
-    "Gemini 1.5 Flash (Recomendado)": "gemini-1.5-flash-latest",
-    "Gemini 3 Flash": "gemini-3-flash-preview",
-    "Gemini 1.5 Pro": "gemini-1.5-pro-latest",
-    "Gemini 3.1 Pro": "gemini-3.1-pro-preview"
+    "Gemini 2.5 Flash (Recomendado)": "gemini-2.5-flash",
+    "Gemini 3 Flash":                 "gemini-3-flash-preview",
+    "Gemini 1.5 Pro":                 "gemini-pro-latest",
+    "Gemini 3.1 Pro":                 "gemini-3.1-pro-preview",
 }
 selected_model_label = st.sidebar.selectbox("Modelo de Inteligencia Artificial", list(model_options.keys()))
 selected_model_name = model_options[selected_model_label]
