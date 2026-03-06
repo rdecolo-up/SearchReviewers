@@ -48,60 +48,63 @@ def get_google_sheet_client():
 import time
 
 def call_gemini_api(api_key, system_instruction, user_prompt, model_name="gemini-2.5-flash"):
+    """
+    Pure function - NO st.* calls allowed here.
+    Called from inside @st.cache_data functions; st.* calls inside cached
+    functions cause CacheReplayClosureError on cache hits.
+    Returns (text, None) on success or (None, error_message) on failure.
+    """
     max_retries = 3
-    base_delay = 10  # Base delay for exponential backoff (10s -> 20s -> 40s)
-    
+    base_delay = 10  # Exponential backoff: 10s -> 20s -> 40s
+    last_error = None
+
     for attempt in range(max_retries):
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
             headers = {"Content-Type": "application/json"}
-            
-            # Construct payload with system instruction properly
             full_prompt = f"{system_instruction}\n\n{user_prompt}"
-            
             data = {
-                "contents": [{
-                    "parts": [{"text": full_prompt}]
-                }],
+                "contents": [{"parts": [{"text": full_prompt}]}],
                 "generationConfig": {
                     "temperature": 0.2,
                     "response_mime_type": "application/json"
                 }
             }
-            
+
             response = requests.post(url, headers=headers, json=data)
-            
-            # Handle Rate Limits (429) specifically
+
             if response.status_code == 429:
                 sleep_time = base_delay * (2 ** attempt)
-                st.warning(f"⚠️ Tráfico alto (429). Esperando {sleep_time}s... (Intento {attempt + 1}/{max_retries})")
-                if attempt == 1:
-                    st.toast("💡 Consejo: Si esto persiste, prueba cambiar al modelo 'Gemini 1.5 Flash'.")
+                last_error = f"429 - Cuota excedida (intento {attempt + 1}/{max_retries}). Esperando {sleep_time}s."
+                print(last_error)
                 time.sleep(sleep_time)
-                continue # Retry
-                
+                continue
+
+            if response.status_code == 503:
+                sleep_time = base_delay * (2 ** attempt)
+                last_error = f"503 - Servicio no disponible (intento {attempt + 1}/{max_retries}). Esperando {sleep_time}s."
+                print(last_error)
+                time.sleep(sleep_time)
+                continue
+
             response.raise_for_status()
-            
+
             result = response.json()
-            # Guard against empty/blocked candidates
             candidates = result.get("candidates", [])
             if not candidates or not candidates[0].get("content", {}).get("parts"):
                 finish = candidates[0].get("finishReason", "UNKNOWN") if candidates else "NO_CANDIDATES"
-                st.warning(f"Respuesta vacia del modelo (finishReason: {finish}). Intente con otro modelo.")
-                return None
-            return candidates[0]["content"]["parts"][0]["text"]
-            
+                last_error = f"Respuesta vacia del modelo (finishReason: {finish})."
+                return None, last_error
+
+            return candidates[0]["content"]["parts"][0]["text"], None
+
         except Exception as e:
-            if attempt == max_retries - 1: # Last attempt
-                st.error(f"🔴 GEMINI FAIL (Final): {e}")
-                return None
-            else:
-                # Check if it was a 429 that somehow slipped through (shouldn't happen with logic above)
-                # or a network error we want to retry
-                st.warning(f"⚠️ API Error (Retrying): {e}")
-                time.sleep(2) # Short sleep for non-429 errors
-                continue
-    return None
+            last_error = str(e)
+            print(f"Gemini API error (intento {attempt + 1}): {e}")
+            if attempt < max_retries - 1:
+                time.sleep(2)
+
+    return None, last_error
 
 # --- DATA HANDLING ---
 
@@ -221,11 +224,12 @@ def verify_article_integrity(api_key, author_name, title, abstract, keywords, mo
         Palabras Clave: "{keywords}"
         """
         
-        response_text = call_gemini_api(api_key, system_instruction, user_prompt, model_name)
-        
+        response_text, api_error = call_gemini_api(api_key, system_instruction, user_prompt, model_name)
+
         if response_text:
             cleaned_text = response_text.replace("```json", "").replace("```", "")
             return json.loads(cleaned_text)
+        print(f"Integrity check - API error: {api_error}")
         return None
     except Exception as e:
         print(f"Integrity check failed: {e}")
@@ -277,14 +281,15 @@ def find_reviewers_with_gemini(api_key, target_article_context, prioritize_latam
         {evaluadores_str}
         """
         
-        response_text = call_gemini_api(api_key, system_instruction, user_prompt, model_name)
-        
+        response_text, api_error = call_gemini_api(api_key, system_instruction, user_prompt, model_name)
+
         if response_text:
             cleaned_text = response_text.replace("```json", "").replace("```", "")
             return json.loads(cleaned_text)
+        print(f"Reviewer search - API error: {api_error}")
         return None
     except Exception as e:
-        st.error(f"Reviewer search failed: {e}")
+        print(f"Reviewer search failed: {e}")
         return None
 
 def get_active_worksheet(sheet_id):
@@ -406,6 +411,8 @@ if mode == "Por ID de Artículo":
                     # reviewer search call and trigger the per-minute quota limit.
                     time.sleep(5)
                         
+                    if integrity is None:
+                        st.warning("No se pudo completar la verificacion de integridad. Intente con otro modelo o espere un momento.")
                     if integrity:
                         # --- Check 1: Author Profile ---
                         st.markdown("### 👤 Perfil Académico del Autor")
@@ -526,7 +533,9 @@ if run_btn and target_article_context:
             
             if json_results:
                 st.session_state['search_results'] = json_results
-                st.success("¡Análisis Completo!")
+                st.success("Analisis Completo!")
+            else:
+                st.error("No se pudo obtener respuesta de Gemini. El modelo puede estar saturado (503) o la cuota agotada (429). Espere un momento y vuelva a intentarlo, o cambie el modelo en la barra lateral.")
 
 # Display Results (Persistent)
 if st.session_state['search_results']:
